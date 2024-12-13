@@ -1,0 +1,6 @@
+Package: sv08mini-update-packge
+Version: 1.2.5
+Architecture: arm64
+Uploaders: Sovol
+Maintainer: Sovol
+Description: test
