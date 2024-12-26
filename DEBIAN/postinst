@@ -1,1 +1,18 @@
 #! /bin/bash
+
+target_dir="/home/sovol"
+sudo chown -R sovol:sovol $target_dir
+
+#usb
+cd /home/sovol/usbmount
+sudo make install
+
+#patch
+cd /home/sovol/patch
+sudo chmod +x ./patch.sh
+sudo ./patch.sh
+
+cd ~
+
+sync
+echo "File permissions changed successfully."
