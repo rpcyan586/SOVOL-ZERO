@@ -703,10 +703,13 @@ class MenuManager:
         self.context = {}
         self.root = None
         plr_bool = self.read_varibles_cfg_value('was_interrupted')
+        reset = self.read_varibles_cfg_value('factory_reset')
         menu_title = ''
         self.config = config
         if plr_bool == "True":
             menu_title = '__resume'
+        elif reset == "False":
+           menu_title = '__reset' 
         else:
             menu_title = '__main'
         self._root = config.get('menu_root', menu_title)
@@ -741,8 +744,11 @@ class MenuManager:
     def handle_ready(self):
         # start timer
         plr_bool = self.read_varibles_cfg_value('was_interrupted')
+        reset = self.read_varibles_cfg_value('factory_reset')
         if plr_bool == "True":
             self.gcode.run_script_from_command('M117 Power Recovery')
+        if reset == "False":
+            self.gcode.run_script_from_command('M117 Boot Process')
         reactor = self.printer.get_reactor()
         reactor.register_timer(self.timer_event, reactor.NOW)
 
@@ -963,7 +969,7 @@ class MenuManager:
                     self.changRootMain()
                 if name in ["Cancel printing", "Resume printing"]:
                     self.back()
-                if name in ["Belt test", "Calibrate Zoffset", "Cooldown", "Start printing", "Show IP", "Bed Mesh", "Quad Gantry Lvl", "Resonances", "Preheat PLA", "Preheat ABS", "Load Cells Test", "PID Tuning"]:
+                if name in ["Belt test", "Calibrate Zoffset", "Cooldown", "Start printing", "Show IP", "Bed Mesh", "Quad Gantry Lvl", "Resonances", "Preheat PLA", "Preheat ABS", "Calibration", "PID Tuning"]:
                     self.back()
                     self.back()
                     if name == "Calibrate Zoffset":
