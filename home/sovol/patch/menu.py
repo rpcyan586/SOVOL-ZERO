@@ -748,7 +748,7 @@ class MenuManager:
         if plr_bool == "True":
             self.gcode.run_script_from_command('M117 Power Recovery')
         if reset == "False":
-            self.gcode.run_script_from_command('M117 Boot Process')
+            self.gcode.run_script_from_command('M117 Factory Settings')
         reactor = self.printer.get_reactor()
         reactor.register_timer(self.timer_event, reactor.NOW)
 

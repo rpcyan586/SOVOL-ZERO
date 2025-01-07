@@ -209,7 +209,9 @@ class Printer:
         mcu_msg = details.get('reason', '')
         logging.info("invoke_shutdown mcu_msg: %s, msg: %s", mcu_msg, msg)
         
-        for index, theMsg in enumerate(["Lost communication with MCU", "Exception in Fan", "ADC out of range"]):
+        for index, theMsg in enumerate(["Lost communication with MCU", "Shutdown due to webhooks request", "ADC out of range", "Heater extruder not heating at expected rate",
+                                      "Heater heater_bed not heating at expected rate", "TMC 'stepper_x' reports error", "TMC 'stepper_y' reports error",
+                                      "TMC 'stepper_z' reports error", "TMC 'extruder' reports error"]):
             if theMsg in msg or theMsg in mcu_msg:
                 self.shutCode = 60 + index
          
