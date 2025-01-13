@@ -964,12 +964,12 @@ class MenuManager:
                 current.run_script('gcode', event=event)
                 current.run_script(event)
                 name = current.render_name(True)
-                if name == "Cancel" or name == "Resume":
+                if name == "Cancel" or name == "Resume" or name == "Skip Calibrate":
                     self.back()
                     self.changRootMain()
                 if name in ["Cancel printing", "Resume printing"]:
                     self.back()
-                if name in ["Belt test", "Calibrate Zoffset", "Cooldown", "Start printing", "Show IP", "Bed Mesh", "Quad Gantry Lvl", "Resonances", "Preheat PLA", "Preheat ABS", "Calibration", "PID Tuning"]:
+                if name in ["Belt test", "Calibrate Zoffset", "Cooldown", "Start printing", "Show IP", "Eddy Calibrate", "Quad Gantry Lvl", "Resonances", "Preheat PLA", "Preheat ABS", "Calibration", "PID Tuning"]:
                     self.back()
                     self.back()
                     if name == "Calibrate Zoffset":
