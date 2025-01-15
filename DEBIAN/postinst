@@ -1,5 +1,8 @@
 #! /bin/bash
 
+sudo chown root:root /home/sovol/ota_service.sh
+sudo mv /home/sovol/ota_service.sh /boot/scripts/
+
 target_dir="/home/sovol"
 sudo chown -R sovol:sovol $target_dir
 
