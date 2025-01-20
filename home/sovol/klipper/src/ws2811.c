@@ -13,7 +13,6 @@ void RGB_IOInit(void)
 void GPIO_SetBits(uint32_t pin)
 {
 	gpio_out_setup(pin, 1);
-	//gpio_out_write(gpio, 1);
 }
 
 void GPIO_ResetBits(uint32_t pin)
@@ -23,30 +22,28 @@ void GPIO_ResetBits(uint32_t pin)
 
 void DelayNops(uint32_t n)
 {
-    for (uint32_t i = 0; i < n; i++) {
-        __NOP();//400MHz-2.5ns
+    uint32_t clk_freq = SystemCoreClock;
+    uint32_t cycles = (clk_freq / 1000000000) * n;
+    for (uint32_t i = 0; i < cycles; i++) {
+        __NOP();
     }
 }
 
 void SendOne(void){//T1H -> T1L
 	
-	GPIO_SetBits(GPIO_CS);//设置为高电平
-	//延时580ns~1μs
-	 DelayNops(350);
+	GPIO_SetBits(GPIO_CS);
+	DelayNops(2);
 	
-	GPIO_ResetBits(GPIO_CS);//设置为低电平
-	//延时220ns~380ns
-	 DelayNops(120);
+	GPIO_ResetBits(GPIO_CS);
+	DelayNops(1);
 }
 
 void SendZero(void){//T0H -> T0L
-	GPIO_SetBits(GPIO_CS);//设置为高电平
-	//延时220ns~380ns
-	 DelayNops(120);
+	GPIO_SetBits(GPIO_CS);
+	DelayNops(1);
 	
-	//延时580ns~1μs
-	GPIO_ResetBits(GPIO_CS);//设置为低电平
-	 DelayNops(350);
+	GPIO_ResetBits(GPIO_CS);
+	DelayNops(2);
 }
 
 void SendRGB(uint8_t red, uint8_t green, uint8_t blue) {
@@ -80,16 +77,14 @@ void SendRGB(uint8_t red, uint8_t green, uint8_t blue) {
 	}
 }
 
-void RGB_Reset(void){							//复位信号
-	GPIO_ResetBits(GPIO_CS);	//设置为低电平
-	DelayNops(100);;								//延时1ms 满足50us的最小持续时间
-	
-	GPIO_SetBits(GPIO_CS);		//设置为高电平
-	DelayNops(200);								//延时1ms 满足280us的最小持续时间
+void RGB_Reset(void){							
+	GPIO_ResetBits(GPIO_CS);	
+	DelayNops(5);
+	GPIO_SetBits(GPIO_CS);		
 }
 
 void lcd_init(void) {
 	RGB_IOInit();
 	RGB_Reset();
-	SendRGB(200, 0, 10);
+  SendRGB(255, 255, 255);
 }

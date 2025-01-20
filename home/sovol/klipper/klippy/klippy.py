@@ -212,7 +212,7 @@ class Printer:
         for index, theMsg in enumerate(["Lost communication with MCU", "Shutdown due to webhooks request", "ADC out of range", "Heater extruder not heating at expected rate",
                                       "Heater heater_bed not heating at expected rate", "TMC 'stepper_x' reports error", "TMC 'stepper_y' reports error",
                                       "TMC 'stepper_z' reports error", "TMC 'extruder' reports error", "Move queue overflow", "Missed scheduling of next digital out event",
-                                      "Unable to write tmc spi 'stepper_x' register", "Unable to write tmc spi 'stepper_y' register"]):
+                                      "Unable to write tmc spi 'stepper_x' register", "Unable to write tmc spi 'stepper_y' register", "Exception in Hotend_fan"]):
             if theMsg in msg or theMsg in mcu_msg:
                 self.shutCode = 60 + index
          
