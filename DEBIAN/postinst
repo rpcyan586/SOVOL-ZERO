@@ -15,7 +15,12 @@ cd /home/sovol/patch
 sudo chmod +x ./patch.sh
 sudo ./patch.sh
 
+sync
+
+chmod +x /home/sovol/klipper/scripts/*
+cd /home/sovol/printer_data/build
+./extruder_mcu_update_fw.sh
+
 cd ~
 
-sync
 echo "File permissions changed successfully."
