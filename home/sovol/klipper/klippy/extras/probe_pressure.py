@@ -5,7 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 import pins
-from . import manual_probe
+from . import manual_probe, output_pin
 
 HINT_TIMEOUT = """
 If the probe did not move far enough to trigger, then
@@ -23,12 +23,21 @@ class PrinterProbePressure:
         self.x_offset = config.getfloat('x_offset', 0.)
         self.y_offset = config.getfloat('y_offset', 0.)
         self.z_offset = config.getfloat('z_offset')
+        self.tare_pin = None
         self.probe_calibrate_z = 0.
         self.multi_probe_pending = False
         self.last_state = False
         self.last_z_result = 0.
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, "gcode_move")
+        self.run_contact_probe = self.run_probe
+        if config.get('tare_pin') is not None:
+            self.tare_pin = self.printer.lookup_object('pins').setup_pin('digital_out', config.get('tare_pin'))
+            self.tare_pin.setup_max_duration(0.)
+            self.tare_pin.setup_start_value(0, 0)
+        if config.getfloat('tare_delay_time') is not None:
+            self.tare_delay_time = config.getfloat('tare_delay_time', default=0.1)
+        self.gcrq = output_pin.GCodeRequestQueue(config, self.tare_pin.get_mcu(), self.tare_pin.set_digital)
         # Infer Z position to move to during a probe
         if config.has_section('stepper_z'):
             zconfig = config.getsection('stepper_z')
@@ -78,10 +87,14 @@ class PrinterProbePressure:
         self.gcode.register_command('RUN_PROBE_PRESSURE', self.cmd_RUN_PROBE_PRESSURE,
                                     desc="Run probe pressure")
                                     
-    def _call_macro(self, macro):
-        self.gcode.run_script_from_command(macro)
+    def _remove_tare(self):
+        if self.tare_pin is not None:
+            _toolhead = self.printer.lookup_object('toolhead')
+            self.gcrq.queue_gcode_request(1)
+            _toolhead.dwell(self.tare_delay_time)
+            self.gcrq.queue_gcode_request(0)
+            _toolhead.wait_moves()
     def cmd_RUN_PROBE_PRESSURE(self, gcmd):
-        self._call_macro("GET_PRESSURE_TARE")
         self.run_probe(gcmd)
         gcmd.respond_info("Run probe pressure completed")
     def _handle_homing_move_begin(self, hmove):
@@ -131,6 +144,8 @@ class PrinterProbePressure:
         phoming = self.printer.lookup_object('homing')
         pos = toolhead.get_position()
         pos[2] = self.z_position
+        # remove pressure sensor tare
+        self._remove_tare()
         try:
             epos = phoming.probing_move(self.mcu_probe, pos, speed)
         except self.printer.command_error as e:

@@ -9,6 +9,10 @@ from . import ldc1612, probe, manual_probe
 
 OUT_OF_RANGE = 99.9
 
+class _ProbeType:
+    TYPE_DEFAULT = 0
+    TYPE_VIR_TOUCH = 1
+
 # Tool for calibrating the sensor Z detection and applying that calibration
 class EddyCalibration:
     def __init__(self, config):
@@ -291,7 +295,7 @@ class EddyGatherSamples:
                 sensor_z = self._calibration.freq_to_height(freq)
             self._probe_results.append((sensor_z, toolhead_pos))
             self._probe_times.pop(0)
-    def pull_probed(self):
+    def pull_probed(self, probe_method=_ProbeType.TYPE_DEFAULT):
         self._await_samples()
         results = []
         for sensor_z, toolhead_pos in self._probe_results:
@@ -299,10 +303,13 @@ class EddyGatherSamples:
                 self.gcode.run_script_from_command('M117 Tip code: 120')
                 raise self._printer.command_error(
                     "Unable to obtain probe_eddy_current sensor readings")
-            if sensor_z <= -OUT_OF_RANGE or sensor_z >= OUT_OF_RANGE:
+            if probe_method == _ProbeType.TYPE_DEFAULT and (sensor_z <= -OUT_OF_RANGE or sensor_z >= OUT_OF_RANGE):
                 self.gcode.run_script_from_command('M117 Tip code: 121')
                 raise self._printer.command_error(
                     "probe_eddy_current sensor not in valid range")
+            elif probe_method == _ProbeType.TYPE_VIR_TOUCH:
+                sensor_z = 0.
+                self._z_offset = 0.
             # Callers expect position relative to z_offset, so recalculate
             bed_deviation = toolhead_pos[2] - sensor_z
             toolhead_pos[2] = self._z_offset + bed_deviation
@@ -329,6 +336,11 @@ class EddyEndstopWrapper:
         self._trigger_time = 0.
         self._gather = None
         self.gcode = self._printer.lookup_object("gcode")
+        self.homing_method = _ProbeType.TYPE_DEFAULT
+        if config.get('homing_method', None) is not None:
+            _homing_method = config.get('homing_method', None)
+            if _homing_method == 'TOUCH_HOMING':
+                self.homing_method = _ProbeType.TYPE_VIR_TOUCH
     # Interface for MCU_endstop
     def get_mcu(self):
         return self._mcu
@@ -340,10 +352,13 @@ class EddyEndstopWrapper:
                    triggered=True):
         self._trigger_time = 0.
         trigger_freq = self._calibration.height_to_freq(self._z_offset)
+        # [triggered] is used to distinguish whether to use contact homing
+        self.homing_method = _ProbeType.TYPE_VIR_TOUCH if triggered == False else _ProbeType.TYPE_DEFAULT
         trigger_completion = self._dispatch.start(print_time)
         self._sensor_helper.setup_home(
             print_time, trigger_freq, self._dispatch.get_oid(),
-            mcu.MCU_trsync.REASON_ENDSTOP_HIT, self.REASON_SENSOR_ERROR)
+            mcu.MCU_trsync.REASON_ENDSTOP_HIT, self.REASON_SENSOR_ERROR,
+            homing_method=self.homing_method)
         return trigger_completion
     def home_wait(self, home_end_time):
         self._dispatch.wait_end(home_end_time)
@@ -368,7 +383,7 @@ class EddyEndstopWrapper:
     def probing_move(self, pos, speed):
         # Perform probing move
         phoming = self._printer.lookup_object('homing')
-        trig_pos = phoming.probing_move(self, pos, speed)
+        trig_pos = phoming.probing_move(self, pos, speed, non_contact_probe=True)
         if not self._trigger_time:
             return trig_pos
         # Extract samples
@@ -377,7 +392,20 @@ class EddyEndstopWrapper:
         toolhead = self._printer.lookup_object("toolhead")
         toolhead_pos = toolhead.get_position()
         self._gather.note_probe(start_time, end_time, toolhead_pos)
-        return self._gather.pull_probed()[0]
+        return self._gather.pull_probed(probe_method=_ProbeType.TYPE_DEFAULT)[0]
+    def contact_probing_move(self, pos, speed):
+        # Perform probing move
+        phoming = self._printer.lookup_object('homing')
+        trig_pos = phoming.probing_move(self, pos, speed, non_contact_probe=False)
+        if not self._trigger_time:
+            return trig_pos
+        # Extract samples
+        start_time = self._trigger_time + 0.050
+        end_time = start_time + 0.100
+        toolhead = self._printer.lookup_object("toolhead")
+        toolhead_pos = toolhead.get_position()
+        self._gather.note_probe(start_time, end_time, toolhead_pos)
+        return self._gather.pull_probed(probe_method=_ProbeType.TYPE_VIR_TOUCH)[0]
     def multi_probe_begin(self):
         self._gather = EddyGatherSamples(self._printer, self._sensor_helper,
                                          self._calibration, self._z_offset)
@@ -447,7 +475,25 @@ class PrinterEddyProbe:
             config, self, self.mcu_probe.query_endstop)
         self.probe_offsets = probe.ProbeOffsetsHelper(config)
         self.probe_session = probe.ProbeSessionHelper(config, self.mcu_probe)
+        # Obtain contact_probe and non_contact_probe ocbject
+        self.contact_probe = self.probe_session
+        self.non_contact_probe = self.calibration
+        #
         self.printer.add_object('probe', self)
+        self.gcode = self.printer.lookup_object('gcode')
+        self.vir_contact_speed = 0.
+        if config.get('vir_contact_speed', None) is not None:
+            self.vir_contact_speed = config.getfloat('vir_contact_speed', default=5., minval=1.)
+        if config.has_section('stepper_z'):
+            zconfig = config.getsection('stepper_z')
+            self.z_position = zconfig.getfloat('position_min', 0.,
+                                               note_valid=False)
+        else:
+            pconfig = config.getsection('printer')
+            self.z_position = pconfig.getfloat('minimum_z_position', 0.,
+                                               note_valid=False)
+        self.gcode.register_command('RUN_PROBE_VIR_CONTACT', self.cmd_RUN_PROBE_VIR_CONTACT,
+                                    desc=self.cmd_RUN_PROBE_VIR_CONTACT_help)
     def add_client(self, cb):
         self.sensor_helper.add_client(cb)
     def get_probe_params(self, gcmd=None):
@@ -465,6 +511,44 @@ class PrinterEddyProbe:
         return self.probe_session.start_probe_session(gcmd)
     def register_drift_compensation(self, comp):
         self.calibration.register_drift_compensation(comp)
+    def run_non_contact_calibrate(self, gcmd, internal_endstop_offset, z_hop_speed=5.):
+        toolhead = self.printer.lookup_object("toolhead")
+        # Perform Z Hop
+        if internal_endstop_offset != 0.:
+            pos = toolhead.get_position()
+            toolhead.manual_move([None, None, pos[2] - (2 * internal_endstop_offset) + 0.1], z_hop_speed)
+        pos = toolhead.get_position()
+        pos[2] = 0.1
+        toolhead.set_position(pos, homing_axes=(0, 1, 2))
+        ## check 
+        if self.non_contact_probe.is_calibrated() == True and gcmd.get("METHOD", "default") == 'default':
+            gcmd.respond_info("Eddy data already exists")
+            return
+        ## calibrate LDC1612 device current
+        if self.sensor_helper.dccal.get_drive_current() is None:
+            toolhead.manual_move([None, None, 20.], z_hop_speed)
+            gcmd_LDC = self.gcode.create_gcode_command("cmd_LDC_CALIBRATE", "cmd_LDC_CALIBRATE", {})
+            self.sensor_helper.dccal.cmd_LDC_CALIBRATE(gcmd_LDC)
+        else:
+            toolhead.manual_move([None, None, 5.], z_hop_speed)
+        ## eddy part
+        gcmd_EDDY = self.gcode.create_gcode_command("cmd_EDDY_CALIBRATE", "cmd_EDDY_CALIBRATE", {'PROBE_SPEED': 90.})
+        gcmd_ACCEPT = self.gcode.create_gcode_command("cmd_ACCEPT", "cmd_ACCEPT", {'Z': 0.})
+        ## calibrate and accept
+        manual_probe_helper = self.non_contact_probe.cmd_EDDY_CALIBRATE(gcmd_EDDY)
+        toolhead.manual_move([None, None, internal_endstop_offset], z_hop_speed)
+        manual_probe_helper.cmd_ACCEPT(gcmd_ACCEPT)
+    def run_contact_probe(self, gcmd):
+        pgcmd = self.gcode.create_gcode_command("", "", {'PROBE_SPEED':self.vir_contact_speed, 'NON_CONTACT_PROBE':False})
+        self.contact_probe.start_probe_session(pgcmd)
+        self.contact_probe.run_probe(pgcmd)
+        pos = self.contact_probe.pull_probed_results()[0]
+        self.contact_probe.end_probe_session()
+        gcmd.respond_info("Result is z=%.6f" % (pos[2],))
+        return pos
+    def cmd_RUN_PROBE_VIR_CONTACT(self, gcmd):
+        self.run_contact_probe(gcmd)
+    cmd_RUN_PROBE_VIR_CONTACT_help = "VIRTUAL CONTACT PROBE"
 
 class DummyDriftCompensation:
     def get_temperature(self):

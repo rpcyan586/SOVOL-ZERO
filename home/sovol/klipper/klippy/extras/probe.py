@@ -307,7 +307,7 @@ class ProbeSessionHelper:
                 'samples_tolerance': samples_tolerance,
                 'samples_tolerance_retries': samples_retries,
                 'samples_result': samples_result}
-    def _probe(self, speed):
+    def _probe(self, speed, non_contact_probe=True):
         toolhead = self.printer.lookup_object('toolhead')
         curtime = self.printer.get_reactor().monotonic()
         if 'z' not in toolhead.get_status(curtime)['homed_axes']:
@@ -315,7 +315,10 @@ class ProbeSessionHelper:
         pos = toolhead.get_position()
         pos[2] = self.z_position
         try:
-            epos = self.mcu_probe.probing_move(pos, speed)
+            if non_contact_probe == True:
+                epos = self.mcu_probe.probing_move(pos, speed)
+            else:
+                epos = self.mcu_probe.contact_probing_move(pos, speed)
         except self.printer.command_error as e:
             reason = str(e)
             if "Timeout during endstop homing" in reason:
@@ -331,6 +334,7 @@ class ProbeSessionHelper:
     def run_probe(self, gcmd):
         if not self.multi_probe_pending:
             self._probe_state_error()
+        non_contact_probe = gcmd.get('NON_CONTACT_PROBE', default=True)
         params = self.get_probe_params(gcmd)
         toolhead = self.printer.lookup_object('toolhead')
         probexy = toolhead.get_position()[:2]
@@ -339,7 +343,7 @@ class ProbeSessionHelper:
         sample_count = params['samples']
         while len(positions) < sample_count:
             # Probe position
-            pos = self._probe(params['probe_speed'])
+            pos = self._probe(params['probe_speed'], non_contact_probe)
             positions.append(pos)
             # Check samples tolerance
             z_positions = [p[2] for p in positions]

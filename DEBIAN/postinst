@@ -1,26 +1,42 @@
 #! /bin/bash
 
+set -e
+
+sudo systemctl stop klipper.service
+
 sudo chown root:root /home/sovol/ota_service.sh
 sudo mv /home/sovol/ota_service.sh /boot/scripts/
+sudo chown -R sovol:sovol /home/sovol
 
-target_dir="/home/sovol"
-sudo chown -R sovol:sovol $target_dir
-
-#usb
-cd /home/sovol/usbmount
-sudo make install
-
-#patch
-cd /home/sovol/patch
-sudo chmod +x ./patch.sh
-sudo ./patch.sh
+cd /home/sovol/usbmount && sudo make install
+cd /home/sovol/patch && sudo ./patch.sh
 
 sync
 
 chmod +x /home/sovol/klipper/scripts/*
-cd /home/sovol/printer_data/build
-./extruder_mcu_update_fw.sh
+#firmware falshing is performed in the background
+(
+    sleep 2
+    cd /home/sovol/printer_data/build
 
-cd ~
+    #firmware flashing and record pid
+    ./extruder_mcu_update_fw.sh &
+    FLASH_PID=$!
+    echo "flash pid: $FLASH_PID" >> "/home/mount.log"
+    
+    for i in {1..30}; do
+        if ! kill -0 $FLASH_PID 2>/dev/null; then
+            wait $FLASH_PID
+            exit $?
+        fi
+        sleep 1
+    done
+    
+    #overtime handle
+    kill -9 $FLASH_PID 2>/dev/null
+    exit 1
+) & #>>"/home/mount.log" &
 
-echo "File permissions changed successfully."
+echo "deb postinst.sh pid: $!" >> "/home/mount.log"
+
+exit 0

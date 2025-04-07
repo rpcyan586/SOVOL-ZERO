@@ -186,20 +186,20 @@ class LookAheadQueue:
             # Enough moves have been queued to reach the target flush time.
             self.flush(lazy=True)
 
-BUFFER_TIME_LOW = 1.5
-BUFFER_TIME_HIGH = 3.0
-BUFFER_TIME_START = 0.500
-BGFLUSH_LOW_TIME = 0.300
-BGFLUSH_BATCH_TIME = 0.300
-BGFLUSH_EXTRA_TIME = 0.500
-MIN_KIN_TIME = 0.100
-MOVE_BATCH_TIME = 1.000
-STEPCOMPRESS_FLUSH_TIME = 0.100
-SDS_CHECK_TIME = 0.001 # step+dir+step filter in stepcompress.c
+BUFFER_TIME_LOW = 2.0
+BUFFER_TIME_HIGH = 4.0
+BUFFER_TIME_START = 0.800
+BGFLUSH_LOW_TIME = 0.500
+BGFLUSH_BATCH_TIME = 0.500
+BGFLUSH_EXTRA_TIME = 0.800
+MIN_KIN_TIME = 0.200
+MOVE_BATCH_TIME = 1.500
+STEPCOMPRESS_FLUSH_TIME = 0.200
+SDS_CHECK_TIME = 0.002 # step+dir+step filter in stepcompress.c
 MOVE_HISTORY_EXPIRE = 30.
 
-DRIP_SEGMENT_TIME = 0.100
-DRIP_TIME = 0.200
+DRIP_SEGMENT_TIME = 0.200
+DRIP_TIME = 0.300
 class DripModeEndSignal(Exception):
     pass
 
