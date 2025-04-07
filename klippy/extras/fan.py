@@ -9,7 +9,7 @@ import logging
 class Fan:
     def __init__(self, config, default_shutdown_speed=0.):
         self.printer = config.get_printer()
-        self.last_fan_value = self.last_req_value = 0.
+        self.last_fan_value = self.last_req_value = 0. 
         self.flag = 0
         # Read config
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
@@ -47,6 +47,8 @@ class Fan:
                                             self._handle_request_restart)
 
         self.gcode = self.printer.lookup_object('gcode')
+        
+        self.fan_name = config.get_name().split()[-1]  # Extracts 'chamber_fan' or 'hotend_fan'
 
     def get_mcu(self):
         return self.mcu_fan.get_mcu()
@@ -79,13 +81,21 @@ class Fan:
     def reCheck(self, eventtime):
         tachometer_status = self.tachometer.get_status(eventtime)
         rpm = tachometer_status['rpm']
-        if self.last_fan_value == 1.0 and rpm == 0.0:
-            self.printer.invoke_shutdown("Exception in Hotend_fan")
+        if self.last_fan_value >=0.2 and rpm == 0.0:
+            if self.fan_name == 'hotend_fan':
+                self.printer.invoke_shutdown("Exception in Hotend_fan")
+            elif self.fan_name == 'chamber_fan':
+                self.gcode.run_script_from_command('SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=0')
+                self.gcode.run_script_from_command('M117 Tip code: 110')
+                self.gcode.respond_info("Exception in chamber_fan")    
+            elif self.fan_name == 'exhaust_fan':
+                self.gcode.run_script_from_command('M117 Tip code: 125')
+                self.gcode.respond_info("Exception in exhaust_fan")    
     def get_status(self, eventtime):
         tachometer_status = self.tachometer.get_status(eventtime)
         rpm = tachometer_status['rpm']
-        if self.last_fan_value == 1.0 and rpm == 0.0:
-            if self.flag < 80:
+        if self.last_fan_value >=0.2 and rpm == 0.0:
+            if self.flag < 60:
                 self.flag += 1
             else:
                 self.flag = 0

@@ -108,7 +108,6 @@ class LDC1612:
         mcu.add_config_cmd("query_ldc1612 oid=%d rest_ticks=0"
                            % (oid,), on_restart=True)
         mcu.register_config_callback(self._build_config)
-        mcu.register_response(self._response_i2c_error, "ldc1612_i2c_report")
         # Bulk sample message reading
         chip_smooth = self.data_rate * BATCH_UPDATES * 2
         self.ffreader = bulk_sensor.FixedFreqReader(mcu, chip_smooth, ">I")
@@ -122,6 +121,13 @@ class LDC1612:
         self.batch_bulk.add_mux_endpoint("ldc1612/dump_ldc1612", "sensor",
                                          self.name, {'header': hdr})
         self.i2c_err_flag = 0
+        mcu.register_response(self._response_i2c_error, "ldc1612_i2c_report")
+        mcu.register_response(self._response_query_loop, "ldc1612_query_loop_report")
+        self.gcode.register_command("EDDY_QUERY_LOOP", self.cmd_LDC1612_QUERY_LOOP, desc="query loop")
+        self.freq = 0
+        self.last_freq = 0
+        self.freq_array = []
+        self.time_record = 0
     def _build_config(self):
         cmdqueue = self.i2c.get_command_queue()
         self.query_ldc1612_cmd = self.mcu.lookup_command(
@@ -130,7 +136,8 @@ class LDC1612:
                                           oid=self.oid, cq=cmdqueue)
         self.ldc1612_setup_home_cmd = self.mcu.lookup_command(
             "ldc1612_setup_home oid=%c clock=%u threshold=%u"
-            " trsync_oid=%c trigger_reason=%c error_reason=%c", cq=cmdqueue)
+            " trsync_oid=%c trigger_reason=%c error_reason=%c"
+            " homing_method=%u", cq=cmdqueue)
         self.query_ldc1612_home_state_cmd = self.mcu.lookup_query_command(
             "query_ldc1612_home_state oid=%c",
             "ldc1612_home_state oid=%c homing=%c trigger_clock=%u",
@@ -148,13 +155,13 @@ class LDC1612:
         self.batch_bulk.add_client(cb)
     # Homing
     def setup_home(self, print_time, trigger_freq,
-                   trsync_oid, hit_reason, err_reason):
+                   trsync_oid, hit_reason, err_reason, homing_method):
         clock = self.mcu.print_time_to_clock(print_time)
         tfreq = int(trigger_freq * (1<<28) / float(LDC1612_FREQ) + 0.5)
         self.ldc1612_setup_home_cmd.send(
-            [self.oid, clock, tfreq, trsync_oid, hit_reason, err_reason])
+            [self.oid, clock, tfreq, trsync_oid, hit_reason, err_reason, homing_method])
     def clear_home(self):
-        self.ldc1612_setup_home_cmd.send([self.oid, 0, 0, 0, 0, 0])
+        self.ldc1612_setup_home_cmd.send([self.oid, 0, 0, 0, 0, 0, 0])
         if self.mcu.is_fileoutput():
             return 0.
         params = self.query_ldc1612_home_state_cmd.send([self.oid])
@@ -235,3 +242,35 @@ class LDC1612:
                       params["cr1_data"], params["cr2_data"],
                       params["sr1_data"], params["sr2_data"],
                       params["dr_data"],  params["err_code"])
+    def write_data_to_file(self, time_value, z_pos, frequency_value):
+        try:
+            with open('/home/sovol/klipper/klippy/extras/sensor_data.txt', 'a') as file:
+                file.write(f"{time_value} {z_pos} {frequency_value}\n")
+                file.flush()
+        except FileNotFoundError as e:
+            print(f"File not found: {e}")
+        except PermissionError as e:
+            print(f"Permission error: {e}")
+        except Exception as e:
+            print(f"Other error: {e}")
+    def cmd_LDC1612_QUERY_LOOP(self, gcmd):
+        self.freq_array.clear()
+        rest_ticks = 0
+        if gcmd.get("SWITCH", "OFF") == "ON":
+            rest_ticks = self.mcu.seconds_to_clock(0.5 / self.data_rate)
+        gcmd.respond_info("rest_ticks:%u" % (rest_ticks))
+        self.query_ldc1612_cmd.send([self.oid, rest_ticks])
+    def _response_query_loop(self, params):
+        kin = self.printer.lookup_object('toolhead').get_kinematics()
+        _stepper_z = kin.get_steppers()[2]
+        _z_cmd_pos = _stepper_z.get_commanded_position()
+        self.last_freq = self.freq
+        self.freq = params['freq']
+        self.time_record+=1
+        self.freq_array.append(self.freq)
+        self.write_data_to_file(self.time_record, _z_cmd_pos, self.freq)
+        # if self.freq != self.last_freq:
+        #     self.write_data_to_file(self.time_record, _z_cmd_pos, self.freq)
+        if self.freq_array.count(self.freq) == 0:
+            self.freq_array.append(self.freq)
+            print(f'freq_array:{self.freq_array}')

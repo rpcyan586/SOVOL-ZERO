@@ -16,9 +16,28 @@
 #include "sensor_bulk.h" // sensor_bulk_report
 #include "trsync.h" // trsync_do_trigger
 
+#define WINDOW_SIZE 30
+#define START_THRESHOLD_SLOPE 1500
+
+#define DEFAULT_HOMING 0
+#define TOUCH_HOMING 1
+
 enum {
     LDC_PENDING = 1<<0, LDC_HAVE_INTB = 1<<1,
-    LH_AWAIT_HOMING = 1<<1, LH_CAN_TRIGGER = 1<<2
+    LH_AWAIT_HOMING = 1<<1, LH_WANT_HOMING = 1<<2,
+    LH_AWAIT_TOUCH_HOMING = 1<<3, LH_WANT_TOUCH_HOMING = 1<<4, 
+    LH_CAN_TRIGGER = 1<<5
+};
+
+struct touch_dectetion_data {
+    int32_t sum_x;
+    int32_t sum_y;
+    int32_t sum_xx;
+    int32_t sum_xy;
+    //sliding window
+    int32_t time_wd[WINDOW_SIZE];
+    int32_t freq_wd[WINDOW_SIZE];
+    uint8_t wd_num;
 };
 
 struct ldc1612 {
@@ -34,6 +53,15 @@ struct ldc1612 {
     uint8_t trigger_reason, error_reason;
     uint32_t trigger_threshold;
     uint32_t homing_clock;
+    uint8_t  homing_method;
+    //touch dectetion
+    struct touch_dectetion_data tdd;
+    uint32_t last_data;
+    uint8_t window_member_cnt;
+    uint8_t check_flag;
+    int32_t cnt_as_time;
+    uint8_t corner_cnt;
+    int32_t last_slope;
 };
 
 static struct task_wake ldc1612_wake;
@@ -96,11 +124,25 @@ command_ldc1612_setup_home(uint32_t *args)
     ld->ts = trsync_oid_lookup(args[3]);
     ld->trigger_reason = args[4];
     ld->error_reason = args[5];
-    ld->homing_flags = LH_AWAIT_HOMING | LH_CAN_TRIGGER;
+    ld->homing_method = args[6];
+    ld->check_flag = 0;
+    ld->window_member_cnt = 1;
+    ld->cnt_as_time = 0;
+    ld->corner_cnt = 0;
+    ld->last_slope = 0;
+    ld->last_data = 0;
+    memset(&(ld->tdd), 0, sizeof(ld->tdd));
+    if (ld->homing_method == DEFAULT_HOMING) {
+        ld->homing_flags = (LH_CAN_TRIGGER | LH_AWAIT_HOMING | LH_WANT_HOMING);
+    }
+    else if (ld->homing_method == TOUCH_HOMING) {
+        ld->homing_flags = (LH_CAN_TRIGGER | LH_AWAIT_TOUCH_HOMING | LH_WANT_TOUCH_HOMING);
+    }
 }
 DECL_COMMAND(command_ldc1612_setup_home,
              "ldc1612_setup_home oid=%c clock=%u threshold=%u"
-             " trsync_oid=%c trigger_reason=%c error_reason=%c");
+             " trsync_oid=%c trigger_reason=%c error_reason=%c"
+             " homing_method=%u");
 
 void
 command_query_ldc1612_home_state(uint32_t *args)
@@ -111,31 +153,87 @@ command_query_ldc1612_home_state(uint32_t *args)
 }
 DECL_COMMAND(command_query_ldc1612_home_state,
              "query_ldc1612_home_state oid=%c");
+             
+// Notify trsync of event
+static void
+notify_trigger(struct ldc1612 *ld, uint32_t time, uint8_t reason)
+{
+    ld->homing_flags = 0;
+    ld->homing_clock = time;
+    trsync_do_trigger(ld->ts, reason);
+}
+
+// Discard floating-point calculation precision
+static inline int32_t
+calc_sliding_window_slope(struct ldc1612 *ld, int32_t t, int32_t f)
+{
+    int32_t slope = 0;
+    struct touch_dectetion_data *_tdd = &(ld->tdd);
+    
+    _tdd->sum_x = _tdd->sum_x - _tdd->time_wd[_tdd->wd_num] + t;
+    _tdd->sum_y = _tdd->sum_y - _tdd->freq_wd[_tdd->wd_num] + f;
+    _tdd->sum_xx = _tdd->sum_xx - (_tdd->time_wd[_tdd->wd_num] * _tdd->time_wd[_tdd->wd_num]) + (t * t);
+    _tdd->sum_xy = _tdd->sum_xy - (_tdd->time_wd[_tdd->wd_num] * _tdd->freq_wd[_tdd->wd_num]) + (t * f);
+    _tdd->time_wd[_tdd->wd_num] = t;
+    _tdd->freq_wd[_tdd->wd_num] = f;
+    _tdd->wd_num = (_tdd->wd_num + 1) % WINDOW_SIZE;
+    // Initialization window
+    if (ld->window_member_cnt < WINDOW_SIZE) {
+        ++(ld->window_member_cnt);
+        goto out;
+    }
+    // Calculate slope = (nΣxy - ΣxΣy)/(nΣx² - (Σx)²)
+    slope = (int32_t)(((WINDOW_SIZE * _tdd->sum_xy) - (_tdd->sum_x * _tdd->sum_y)) / ((WINDOW_SIZE * _tdd->sum_xx) - (_tdd->sum_x * _tdd->sum_x)));
+out:
+    return slope;
+}
 
 // Check if a sample should trigger a homing event
 static void
 check_home(struct ldc1612 *ld, uint32_t data)
 {
     uint8_t homing_flags = ld->homing_flags;
-    if (!(homing_flags & LH_CAN_TRIGGER))
+    if (!(homing_flags & LH_CAN_TRIGGER) || ld->last_data == data)
         return;
+    ld->last_data = data;
+    uint32_t time = timer_read_time();
     if (data > 0x0fffffff) {
         // Sensor reports an issue - cancel homing
-        ld->homing_flags = 0;
-        trsync_do_trigger(ld->ts, ld->error_reason);
+        notify_trigger(ld, time, ld->error_reason);
         return;
     }
-    uint32_t time = timer_read_time();
-    if ((homing_flags & LH_AWAIT_HOMING)
-        && timer_is_before(time, ld->homing_clock))
-        return;
-    homing_flags &= ~LH_AWAIT_HOMING;
-    if (data > ld->trigger_threshold) {
-        homing_flags = 0;
-        ld->homing_clock = time;
-        trsync_do_trigger(ld->ts, ld->trigger_reason);
+    if (homing_flags & LH_WANT_HOMING) {
+        if (homing_flags & LH_AWAIT_HOMING) {
+            if (timer_is_before(time, ld->homing_clock))
+                return;
+            ld->homing_flags &= ~LH_AWAIT_HOMING;
+        }
+        if (data > ld->trigger_threshold) {
+            notify_trigger(ld, time, ld->trigger_reason);
+        }
     }
-    ld->homing_flags = homing_flags;
+    else if (homing_flags & LH_WANT_TOUCH_HOMING) {
+        int32_t slope = calc_sliding_window_slope(ld, ++(ld->cnt_as_time), (data % 10000000));
+        ld->corner_cnt = (slope < ld->last_slope && ld->last_data <= data) ? (ld->corner_cnt + 1) : 0;
+        ld->last_slope = slope;
+        // Await
+        if (homing_flags & LH_AWAIT_TOUCH_HOMING) {
+            if (timer_is_before(time, ld->homing_clock))
+                return;
+            ld->homing_flags &= ~LH_AWAIT_TOUCH_HOMING;
+        }
+        if (!ld->check_flag && slope > START_THRESHOLD_SLOPE) {
+            ld->check_flag = 1;
+        }
+        // Start check
+        if (ld->check_flag) {
+            // slope > 5500 ? (slope > 8500 ? (slope > 10000 ? 3 : 5) : 15) : 27
+            uint8_t trigger_factor = 27 - (12 * (slope > 5500)) - (10 * (slope > 8500)) - (2 * (slope > 10000));
+            if (ld->corner_cnt > trigger_factor) {
+                notify_trigger(ld, time, ld->trigger_reason);
+            }
+        }
+    }
 }
 
 // Chip registers
@@ -187,6 +285,8 @@ ldc1612_query(struct ldc1612 *ld, uint8_t oid)
                     | ((uint32_t)d[2] << 8)
                     | ((uint32_t)d[3]);
     check_home(ld, data);
+    
+    // sendf("ldc1612_query_loop_report freq=%u", (uint32_t)data);
 
     // Flush local buffer if needed
     if (ld->sb.data_count + BYTES_PER_SAMPLE > ARRAY_SIZE(ld->sb.data))
@@ -254,3 +354,4 @@ ldc1612_task(void)
     }
 }
 DECL_TASK(ldc1612_task);
+
