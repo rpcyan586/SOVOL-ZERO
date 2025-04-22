@@ -14,28 +14,48 @@ cd /home/sovol/patch && sudo ./patch.sh
 sync
 
 chmod +x /home/sovol/klipper/scripts/*
-#firmware falshing is performed in the background
-(
-    sleep 2
-    cd /home/sovol/printer_data/build
 
-    #firmware flashing and record pid
-    ./extruder_mcu_update_fw.sh &
-    FLASH_PID=$!
-    echo "flash pid: $FLASH_PID" >> "/home/mount.log"
+# #firmware falshing is performed in the background
+# (
+#     sleep 2
+#     cd /home/sovol/printer_data/build
+
+#     #firmware flashing and record pid
+#     ./extruder_mcu_update_fw.sh &
+#     FLASH_PID=$!
+#     echo "flash pid: $FLASH_PID" >> "/home/mount.log"
     
-    for i in {1..30}; do
-        if ! kill -0 $FLASH_PID 2>/dev/null; then
-            wait $FLASH_PID
-            exit $?
-        fi
-        sleep 1
-    done
+#     for i in {1..30}; do
+#         if ! kill -0 $FLASH_PID 2>/dev/null; then
+#             wait $FLASH_PID
+#             exit $?
+#         fi
+#         sleep 1
+#     done
     
-    #overtime handle
-    kill -9 $FLASH_PID 2>/dev/null
-    exit 1
-) & #>>"/home/mount.log" &
+#     #overtime handle
+#     kill -9 $FLASH_PID 2>/dev/null
+#     exit 1
+# ) & #>>"/home/mount.log" &
+
+sleep 2
+cd /home/sovol/printer_data/build
+
+#firmware flashing
+./extruder_mcu_update_fw.sh &
+FLASH_PID=$!
+echo "flash pid: $FLASH_PID" >> "/home/mount.log"
+
+for i in {1..30}; do
+    if ! kill -0 $FLASH_PID 2>/dev/null; then
+        wait $FLASH_PID
+        exit $?
+    fi
+    sleep 1
+done
+
+#overtime handle
+kill -9 $FLASH_PID 2>/dev/null
 
 echo "deb postinst.sh pid: $!" >> "/home/mount.log"
 
