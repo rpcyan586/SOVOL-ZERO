@@ -1,0 +1,13 @@
+[Unit]
+Description=WiFi Server Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/bin/wifi_server.py
+Restart=always
+User=root
+WorkingDirectory=/usr/local/bin
+
+[Install]
+WantedBy=multi-user.target
+

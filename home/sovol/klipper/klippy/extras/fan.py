@@ -10,7 +10,7 @@ class Fan:
     def __init__(self, config, default_shutdown_speed=0.):
         self.printer = config.get_printer()
         self.last_fan_value = self.last_req_value = 0. 
-        self.flag = 0
+        self.start_check_time = 0.
         # Read config
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
         self.kick_start_time = config.getfloat('kick_start_time', 0.1,
@@ -86,6 +86,7 @@ class Fan:
                 self.printer.invoke_shutdown("Exception in Hotend_fan")
             elif self.fan_name == 'chamber_fan':
                 self.gcode.run_script_from_command('SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=0')
+                self.gcode.run_script_from_command('SET_PIN PIN=hot_led VALUE=1')
                 self.gcode.run_script_from_command('M117 Tip code: 110')
                 self.gcode.respond_info("Exception in chamber_fan")    
             elif self.fan_name == 'exhaust_fan':
@@ -94,14 +95,14 @@ class Fan:
     def get_status(self, eventtime):
         tachometer_status = self.tachometer.get_status(eventtime)
         rpm = tachometer_status['rpm']
-        if self.last_fan_value >=0.2 and rpm == 0.0:
-            if self.flag < 60:
-                self.flag += 1
-            else:
-                self.flag = 0
+        if self.last_fan_value >= 0.2 and rpm == 0.0:
+            if self.start_check_time == 0:
+                self.start_check_time = eventtime
+            elif eventtime - self.start_check_time >= 20.0:
                 self.reCheck(eventtime)
+                self.start_check_time = 0 
         else:
-            self.flag = 0
+            self.start_check_time = 0  
         return {
             'speed': self.last_req_value,
             'rpm': tachometer_status['rpm'],

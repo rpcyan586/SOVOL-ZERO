@@ -258,7 +258,7 @@ class BedMesh:
             gcmd.respond_info("Bed has not been probed")
         else:
             self.z_mesh.print_probed_matrix(gcmd.respond_info)
-            self.z_mesh.print_mesh(gcmd.respond_raw, self.horizontal_move_z)
+        #    self.z_mesh.print_mesh(gcmd.respond_raw, self.horizontal_move_z)
     cmd_BED_MESH_MAP_help = "Serialize mesh and output to terminal"
     def cmd_BED_MESH_MAP(self, gcmd):
         if self.z_mesh is not None:
@@ -614,7 +614,7 @@ class BedMeshCalibrate:
                 self.radius, self.origin, probe_method
             )
             gcmd.respond_info("Generating new points...")
-            self.print_generated_points(gcmd.respond_info)
+            #self.print_generated_points(gcmd.respond_info)
             msg = "\n".join(["%s: %s" % (k, v)
                              for k, v in self.mesh_config.items()])
             logging.info("Updated Mesh Configuration:\n" + msg)
@@ -1402,7 +1402,7 @@ class ZMesh:
     def build_mesh(self, z_matrix):
         self.probed_matrix = z_matrix
         self._sample(z_matrix)
-        self.print_mesh(logging.debug)
+        #self.print_mesh(logging.debug)
     def set_zero_reference(self, xpos, ypos):
         offset = self.calc_z(xpos, ypos)
         logging.info(

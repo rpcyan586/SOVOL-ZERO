@@ -4,8 +4,10 @@ set -e
 
 sudo systemctl stop klipper.service
 
-sudo chown root:root /home/sovol/ota_service.sh
+sudo chown root:root /home/sovol/ota_service.sh /home/sovol/8189fs.ko
 sudo mv /home/sovol/ota_service.sh /boot/scripts/
+sudo mv /home/sovol/8189fs.ko /lib/modules/5.16.17-sun50iw9/kernel/drivers/net/wireless/rtl8189fs
+
 sudo chown -R sovol:sovol /home/sovol
 
 cd /home/sovol/usbmount && sudo make install
@@ -15,33 +17,36 @@ sync
 
 chmod +x /home/sovol/klipper/scripts/*
 
-# #firmware falshing is performed in the background
-# (
-#     sleep 2
-#     cd /home/sovol/printer_data/build
+if ! python3 -c "import flask" &> /dev/null; then
+    echo "Installing Flask..."
+    pip3 install --no-index --find-links=/home/sovol/offline_lib/flask flask
+fi
 
-#     #firmware flashing and record pid
-#     ./extruder_mcu_update_fw.sh &
-#     FLASH_PID=$!
-#     echo "flash pid: $FLASH_PID" >> "/home/mount.log"
-    
-#     for i in {1..30}; do
-#         if ! kill -0 $FLASH_PID 2>/dev/null; then
-#             wait $FLASH_PID
-#             exit $?
-#         fi
-#         sleep 1
-#     done
-    
-#     #overtime handle
-#     kill -9 $FLASH_PID 2>/dev/null
-#     exit 1
-# ) & #>>"/home/mount.log" &
+chmod +x /usr/local/bin/wifi_server.py
 
+systemctl daemon-reload
+systemctl enable wifi_server.service
+systemctl start wifi_server.service
+
+# Version check
+version1="1.4.1"
+version2="$(cat /home/sovol/vtmp.txt)"
+highest=$(printf "%s\n%s" "$version1" "$version2" | sort -V | tail -n1)
+
+# echo "version1: $version1"
+# echo "version2: $version2"
+# echo "highest : $highest"
+
+if [ "$version1" = "$version2" ] || [ "$highest" != "$version1" ]; then
+    sudo rm -f /home/sovol/vtmp.txt
+    echo "No firmware burning is required."
+    exit 0
+fi
+
+#firmware flashing
 sleep 2
 cd /home/sovol/printer_data/build
 
-#firmware flashing
 ./extruder_mcu_update_fw.sh &
 FLASH_PID=$!
 echo "flash pid: $FLASH_PID" >> "/home/mount.log"
@@ -58,5 +63,7 @@ done
 kill -9 $FLASH_PID 2>/dev/null
 
 echo "deb postinst.sh pid: $!" >> "/home/mount.log"
+
+sudo rm -f /home/sovol/vtmp.txt
 
 exit 0

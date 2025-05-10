@@ -1,1 +1,7 @@
 #! /bin/bash
+
+version=$(grep -A3 "\[menu __main __info __version\]" /home/sovol/klipper/klippy/extras/display/menu.cfg | grep name: | awk '{print $2}')
+sudo echo $version > /home/sovol/vtmp.txt
+
+# echo $version
+# cat /home/sovol/vtmp.txt
