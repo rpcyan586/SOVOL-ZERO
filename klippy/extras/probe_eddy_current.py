@@ -226,9 +226,7 @@ class EddyGatherSamples:
         self.gcode = self._printer.lookup_object("gcode")
         # Start samples
         if not self._calibration.is_calibrated():
-            self.gcode.run_script_from_command('M117 Tip code: 118')
-            raise self._printer.command_error(
-                "Must calibrate probe_eddy_current first")
+            self.gcode.respond_info("Must calibrate probe_eddy_current first")
         sensor_helper.add_client(self._add_measurement)
     def _add_measurement(self, msg):
         if self._need_stop:
@@ -351,7 +349,7 @@ class EddyEndstopWrapper:
     def home_start(self, print_time, sample_time, sample_count, rest_time,
                    triggered=True):
         self._trigger_time = 0.
-        trigger_freq = self._calibration.height_to_freq(self._z_offset)
+        trigger_freq = self._calibration.height_to_freq(self._z_offset) if triggered == True else 1
         # [triggered] is used to distinguish whether to use contact homing
         self.homing_method = _ProbeType.TYPE_VIR_TOUCH if triggered == False else _ProbeType.TYPE_DEFAULT
         trigger_completion = self._dispatch.start(print_time)
@@ -501,7 +499,9 @@ class PrinterEddyProbe:
     def get_offsets(self):
         return self.probe_offsets.get_offsets()
     def get_status(self, eventtime):
-        return self.cmd_helper.get_status(eventtime)
+        status = self.cmd_helper.get_status(eventtime)
+        status['is_calibrated'] = self.calibration.is_calibrated()
+        return status
     def start_probe_session(self, gcmd):
         method = gcmd.get('METHOD', 'automatic').lower()
         if method in ('scan', 'rapid_scan'):
@@ -513,12 +513,9 @@ class PrinterEddyProbe:
         self.calibration.register_drift_compensation(comp)
     def run_non_contact_calibrate(self, gcmd, internal_endstop_offset, z_hop_speed=5.):
         toolhead = self.printer.lookup_object("toolhead")
-        # Perform Z Hop
-        if internal_endstop_offset != 0.:
-            pos = toolhead.get_position()
-            toolhead.manual_move([None, None, pos[2] - (2 * internal_endstop_offset) + 0.1], z_hop_speed)
+        ## set z zero
         pos = toolhead.get_position()
-        pos[2] = 0.1
+        pos[2] = 0.
         toolhead.set_position(pos, homing_axes=(0, 1, 2))
         ## check 
         if self.non_contact_probe.is_calibrated() == True and gcmd.get("METHOD", "default") == 'default':
@@ -533,10 +530,10 @@ class PrinterEddyProbe:
             toolhead.manual_move([None, None, 5.], z_hop_speed)
         ## eddy part
         gcmd_EDDY = self.gcode.create_gcode_command("cmd_EDDY_CALIBRATE", "cmd_EDDY_CALIBRATE", {'PROBE_SPEED': 90.})
-        gcmd_ACCEPT = self.gcode.create_gcode_command("cmd_ACCEPT", "cmd_ACCEPT", {'Z': 0.})
+        gcmd_ACCEPT = self.gcode.create_gcode_command("cmd_ACCEPT", "cmd_ACCEPT", {'Z': -internal_endstop_offset})
         ## calibrate and accept
         manual_probe_helper = self.non_contact_probe.cmd_EDDY_CALIBRATE(gcmd_EDDY)
-        toolhead.manual_move([None, None, internal_endstop_offset], z_hop_speed)
+        manual_probe_helper.move_z(-internal_endstop_offset)
         manual_probe_helper.cmd_ACCEPT(gcmd_ACCEPT)
     def run_contact_probe(self, gcmd):
         pgcmd = self.gcode.create_gcode_command("", "", {'PROBE_SPEED':self.vir_contact_speed, 'NON_CONTACT_PROBE':False})

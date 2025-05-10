@@ -34,6 +34,7 @@ class PrinterHeaterFan:
         if speed != self.last_speed:
             self.last_speed = speed
             self.fan.set_speed(speed)
+        self.get_status(eventtime)
         return eventtime + 1.
 
 def load_config_prefix(config):
