@@ -24,6 +24,8 @@ This fork adds what `Sovol3d/SOVOL-ZERO` doesn't carry: Sovol's own Klipper hist
 
 They are one repository; the shorter histories are prefixes of the longer. `pulponair/sovol-zero-klipper-enhanced` carries the first 43. The SV08 Max's own branch is not included.
 
+Sovol's Zero history to 1.4.5 is also on `sharkovich/sovol-zero-klipper`, published 2026-02-07.
+
 Every commit on `klipper/vendor` is Sovol's original object, so it can be checked against any Zero:
 
 ```
