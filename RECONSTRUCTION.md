@@ -7,7 +7,7 @@ This fork adds what `Sovol3d/SOVOL-ZERO` doesn't carry: Sovol's own Klipper hist
 | Ref | What it is |
 |---|---|
 | `main` | `Sovol3d/SOVOL-ZERO` as published |
-| `reconstruction` | `main` plus `.gitmodules` and this file |
+| `reconstruction` | `main` plus `.gitmodules`, this file, and the mainboard firmware read from two printers |
 | `klipper/vendor` | Sovol's internal Klipper repository for the Zero: 56 commits from `a6dc07c` "first commit for sv08mini" to `8a8b5e8` "1.4.5", with the original hashes, authors, dates and messages |
 | `klipper/shipped` | `cc8afd8` (1.3.7), then the Klipper tree each OTA update left on the printer |
 | `ota/packages` | every Zero OTA package found, unpacked, one commit per package, oldest first |
@@ -67,6 +67,10 @@ On `klipper/shipped` each package's Klipper files are overlaid on the previous t
 Besides Klipper: Mainsail, Sovol's printer configs (`printer_data/config`, `patch/`), the OTA and service scripts, the toolhead firmware and its CAN flasher (`printer_data/build`), and from 1.4.6 the Realtek 8189FS Wi-Fi driver (`8189fs.ko`, `v5.15.6-11-g51d21ab4e.20230207`, built for kernel `5.16.17-sun50iw9`), a Wi-Fi setup server (`usr/local/bin/wifi_server.py`) and the Flask wheels it installs offline (`offline_lib/flask`, Flask 3.1.0 for Python 3.9 on aarch64).
 
 The firmware images are Sovol's builds. Their build IDs (`cc8afd8-dirty`, `14d7b18-dirty`) name commits on `klipper/vendor`, but "dirty" means the tree had uncommitted changes, so the exact source isn't available. The Wi-Fi driver is a binary of Realtek's out-of-tree driver; its source isn't in the packages.
+
+## Mainboard firmware
+
+No package carries mainboard firmware. `captured/zero-mainboard-14d7b18-20250210/` holds the build every Zero runs, read from two printers' flash, with details in the README there.
 
 ## Submodules
 
