@@ -1,0 +1,24 @@
+[submodule "sovol/klipper"]
+	path = sovol/klipper
+	url = https://github.com/rpcyan586/SOVOL-ZERO.git
+[submodule "sovol/KlipperScreen"]
+	path = sovol/KlipperScreen
+	url = https://github.com/KlipperScreen/KlipperScreen.git
+[submodule "sovol/crowsnest"]
+	path = sovol/crowsnest
+	url = https://github.com/mainsail-crew/crowsnest.git
+[submodule "sovol/kiauh"]
+	path = sovol/kiauh
+	url = https://github.com/dw-0/kiauh.git
+[submodule "sovol/mainsail-config"]
+	path = sovol/mainsail-config
+	url = https://github.com/mainsail-crew/mainsail-config.git
+[submodule "sovol/moonraker"]
+	path = sovol/moonraker
+	url = https://github.com/Arksine/moonraker.git
+[submodule "sovol/moonraker-obico"]
+	path = sovol/moonraker-obico
+	url = https://github.com/TheSpaghettiDetective/moonraker-obico.git
+[submodule "sovol/moonraker-timelapse"]
+	path = sovol/moonraker-timelapse
+	url = https://github.com/mainsail-crew/moonraker-timelapse.git
